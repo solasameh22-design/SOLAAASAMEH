@@ -5,8 +5,7 @@ Roles: tourist, tour_guide, trip_planner.
 
 ## Setup
 ```
-npm install express@5 pg bcryptjs jose cookie-parser zod@3
-npm install -D typescript tsx @types/node @types/express @types/cookie-parser @types/pg @types/bcryptjs @vitejs/plugin-react vite react react-dom
+npm install
 cp .env.example .env      # fill in DATABASE_URL and JWT_SECRET
 ```
 Run `sql/update_schema.sql` once in the Supabase SQL editor (after your old schema, `sql/schema.sql`).
@@ -14,7 +13,6 @@ Run `sql/update_schema.sql` once in the Supabase SQL editor (after your old sche
 ## Run
 ```
 npm run dev:api     # API on http://localhost:3001
-npm run dev         # React app, /api proxied to the API
 npm run typecheck:api
 ```
 Never commit `.env`. On Vercel, set `DATABASE_URL` and `JWT_SECRET` in the project settings.
@@ -28,3 +26,5 @@ Never commit `.env`. On Vercel, set `DATABASE_URL` and `JWT_SECRET` in the proje
 - `PUT /api/trips/:id/share`, `GET /api/shared/:token` (public)
 
 Status: the SQL and the zod validation rules were tested; the Express code has not been run yet.
+
+`frontend-example/` holds the Vite proxy config and the Trip Itinerary page to copy into your React project; it is not part of this API build.
