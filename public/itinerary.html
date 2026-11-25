@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Trip Itinerary · Tidewander</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+<div id="chrome"></div>
+<script src="app.js"></script>
+<main class="shell">
+  <div class="stack" id="head"></div>
+  <div class="tabs" id="dchips" role="group" aria-label="Show day"></div>
+  <div class="plan">
+    <div class="stack" id="left">
+      <section class="stack" id="days" aria-label="Itinerary"></section>
+      <section class="stack" aria-labelledby="sgh"><div class="row between"><h2 id="sgh">Places to visit</h2><span class="muted small" id="sgn"></span></div><div class="stack" id="sug"></div></section>
+      <section class="stack" aria-labelledby="bkh"><h2 id="bkh">Booking links</h2><div class="stack" id="bk"></div></section>
+      <div class="panel sharebox" id="share"></div>
+      <div class="row"><a class="btn ghost" id="more" href="destination.html">Find more places</a><button class="btn ghost" id="reset" type="button">Reset demo data</button></div>
+    </div>
+    <aside class="mapcol"><div class="mapbox" id="mb"></div><div class="legend" id="lg"></div><p class="hint" id="mapnote"></p></aside>
+  </div>
+</main>
+<script>
+(function () {
+  var R = window.RW, S = R.getState(), openEdit = null, dayF = null, active = null;
+  function save() { R.setState(S); paint(); }
+  function sorted() { return S.items.slice().sort(function (a, b) { return a.sort_order - b.sort_order; }); }
+  function dayOf(it) { return it.planned_at.slice(0, 10); }
+  function keys() { var d = R.parseDate(S.trip.start_date), n = Math.min(R.nightsDays(S.trip.start_date, S.trip.end_date), 14), out = []; for (var i = 0; i < n; i++) { var x = new Date(d); x.setDate(d.getDate() + i); out.push(R.iso(x)); } return out; }
+
+  function paint() {
+    var t = S.trip, L = R.loc(t.location_id), ks = keys(), days = ks.length;
+    document.getElementById('more').href = 'destination.html#' + L.id;
+    var per = t.budget == null ? 'Not set' : R.money(t.budget / R.nightsDays(t.start_date, t.end_date));
+    document.getElementById('head').innerHTML =
+      '<span class="eyebrow">' + R.esc(L.name) + ', ' + R.esc(L.country) + '</span><h1>' + R.esc(t.title) + '</h1>' +
+      '<dl class="summary"><div><dt>Dates</dt><dd>' + R.fmtRange(t.start_date, t.end_date) + '</dd></div><div><dt>Budget</dt><dd>' + (t.budget == null ? 'Not set' : R.money(t.budget)) + '</dd></div>' +
+      '<div><dt>Per day</dt><dd>' + per + '</dd></div><div><dt>Interests</dt><dd>' + R.esc(t.interests || 'None') + '</dd></div></dl>';
+    document.getElementById('dchips').innerHTML = '<button type="button" class="tab" data-d="" aria-pressed="' + (!dayF) + '">All days</button>' +
+      ks.map(function (k, i) { return '<button type="button" class="tab" data-d="' + k + '" aria-pressed="' + (dayF === k) + '"><i class="dot" style="background:' + R.dayColor(i) + ';margin-right:6px;box-shadow:0 0 0 2px var(--bg)"></i>Day ' + (i + 1) + '</button>'; }).join('');
+
+    var items = sorted(), html = '', seen = {};
+    ks.forEach(function (k, i) { seen[k] = true; if (!dayF || dayF === k) html += dayBlock(k, i, items.filter(function (x) { return dayOf(x) === k; })); });
+    var stray = items.filter(function (x) { return !seen[dayOf(x)]; });
+    if (stray.length && !dayF) html += dayBlock(null, 0, stray);
+    document.getElementById('days').innerHTML = html;
+    paintMap(); paintSug(); paintBk(); paintShare();
+  }
+
+  function paintMap() {
+    document.getElementById('mb').innerHTML = R.tripMap(S, { day: dayF, active: active }) + '<span class="mapnote">Schematic map. Tap a pin to find the stop.</span>';
+    document.getElementById('lg').innerHTML = keys().map(function (k, i) { return (!dayF || dayF === k) ? '<span><i class="dot" style="background:' + R.dayColor(i) + '"></i>Day ' + (i + 1) + '</span>' : ''; }).join('');
+    document.getElementById('mapnote').textContent = 'Distances between stops are estimates for the prototype.';
+  }
+
+  function dayBlock(key, i, list) {
+    var head = key ? '<i class="dot" style="background:' + R.dayColor(i) + '"></i><span class="d">Day ' + (i + 1) + '</span><span class="muted">' + R.fmtDay(key) + '</span><span class="pill">' + list.length + (list.length === 1 ? ' stop' : ' stops') + '</span>' : '<span class="d">Outside trip dates</span>';
+    var body = list.length ? '<div class="stops">' + list.map(function (it, idx) { return (idx ? R.hop(list[idx - 1].place_id, it.place_id) : '') + row(it, idx, list.length, i); }).join('') + '</div>' : '<div class="empty">No plans yet. Add one from Places to visit.</div>';
+    return '<section class="day"><header>' + head + '</header>' + body + '</section>';
+  }
+
+  function row(it, idx, len, di) {
+    var p = R.place(it.place_id), editing = openEdit === it.id;
+    return '<article class="stop' + (active === it.id ? ' active' : '') + '" data-id="' + it.id + '"><span class="marker" style="background:' + R.dayColor(di) + '">' + (idx + 1) + '</span>' +
+      '<div class="what"><span class="tm">' + R.fmtTime(it.planned_at) + '</span><a class="name" href="place.html#' + p.id + '">' + R.esc(p.name) + '</a>' +
+      '<div class="tags"><span class="pill">' + R.esc(R.CATS[p.category].label) + '</span>' + (p.is_hidden_gem ? '<span class="pill gem">' + R.icon('gem') + 'Hidden gem</span>' : '') + '</div>' +
+      (it.notes ? '<p class="note">' + R.esc(it.notes) + '</p>' : '') +
+      '<div class="acts">' +
+      '<button class="iconbtn" data-act="up" aria-label="Move up"' + (idx === 0 ? ' disabled' : '') + '>' + R.icon('up') + '</button>' +
+      '<button class="iconbtn" data-act="down" aria-label="Move down"' + (idx === len - 1 ? ' disabled' : '') + '>' + R.icon('down') + '</button>' +
+      '<button class="iconbtn" data-act="edit" aria-label="Edit time and notes">' + R.icon('edit') + '</button>' +
+      '<a class="iconbtn" href="' + R.esc(p.booking_url) + '" target="_blank" rel="noopener" aria-label="Open booking page for ' + R.esc(p.name) + '">' + R.icon('ext') + '</a>' +
+      '<button class="iconbtn danger" data-act="del" aria-label="Remove from trip">' + R.icon('trash') + '</button></div></div>' +
+      (editing ? '<form class="editor" style="grid-column:1/-1" data-edit="' + it.id + '"><div class="field"><label for="pa-' + it.id + '">Planned at</label><span class="col">trip_items.planned_at · timestamptz</span><input id="pa-' + it.id + '" type="datetime-local" value="' + it.planned_at + '" required></div>' +
+        '<div class="field"><label for="nt-' + it.id + '">Notes</label><span class="col">trip_items.notes · text</span><textarea id="nt-' + it.id + '">' + R.esc(it.notes) + '</textarea></div>' +
+        '<div class="row"><button class="btn sm" type="submit">Save</button><button class="btn sm ghost" type="button" data-act="cancel">Cancel</button></div></form>' : '') +
+      '</article>';
+  }
+
+  function paintSug() {
+    var used = {}; S.items.forEach(function (x) { used[x.place_id] = 1; });
+    var list = R.placesIn(S.trip.location_id).filter(function (p) { return !used[p.id]; });
+    document.getElementById('sgn').textContent = list.length + ' not yet in your plan';
+    document.getElementById('sug').innerHTML = list.length ? list.slice(0, 6).map(function (p) {
+      var m = R.matches(p, S.trip.interests);
+      return '<div class="sug"><div style="min-width:0"><a href="place.html#' + p.id + '">' + R.esc(p.name) + '</a><div class="tags" style="margin-top:4px"><span class="pill">' + R.esc(R.CATS[p.category].label) + '</span>' + (p.is_hidden_gem ? '<span class="pill gem">' + R.icon('gem') + 'Hidden gem</span>' : '') + (m.length ? '<span class="pill ok">Fits: ' + R.esc(m[0]) + '</span>' : '') + '</div></div>' +
+        '<button class="btn sm" type="button" data-add="' + p.id + '">' + R.icon('plus') + 'Add</button></div>';
+    }).join('') : '<div class="empty">Everything in ' + R.esc(R.loc(S.trip.location_id).name) + ' is already in your plan.</div>';
+  }
+  function paintBk() {
+    document.getElementById('bk').innerHTML = sorted().sort(function (a, b) { return a.planned_at < b.planned_at ? -1 : 1; }).map(function (it) {
+      var p = R.place(it.place_id);
+      return '<div class="sug"><div style="min-width:0"><b>' + R.esc(p.name) + '</b><div class="muted small">' + R.fmtDay(dayOf(it)) + ' · ' + R.fmtTime(it.planned_at) + ' · ' + R.esc(R.CATS[p.category].label) + '</div></div>' +
+        '<a class="btn sm ghost" href="' + R.esc(p.booking_url) + '" target="_blank" rel="noopener">' + R.icon('ext') + 'Book</a></div>';
+    }).join('') || '<div class="empty">Add places to see their booking links.</div>';
+  }
+
+  document.getElementById('dchips').addEventListener('click', function (e) { var b = e.target.closest('[data-d]'); if (!b) return; dayF = b.dataset.d || null; active = null; paint(); });
+  document.getElementById('mb').addEventListener('click', function (e) {
+    var pin = e.target.closest('.pin'); if (!pin) return; active = pin.dataset.id; paint();
+    var el = document.querySelector('.stop[data-id="' + active + '"]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  document.getElementById('left').addEventListener('click', function (e) {
+    var a = e.target.closest('[data-add]');
+    if (a) { var r = R.addToTrip(a.dataset.add); S = R.getState(); R.toast(r.ok ? 'Added to Day ' + r.day : R.esc(r.msg)); return paint(); }
+    var b = e.target.closest('[data-act]');
+    if (!b) { var st = e.target.closest('.stop'); if (st && !e.target.closest('a')) { active = active === st.dataset.id ? null : st.dataset.id; paint(); } return; }
+    var art = b.closest('.stop'), id = art.dataset.id, act = b.dataset.act;
+    if (act === 'edit') { openEdit = openEdit === id ? null : id; return paint(); }
+    if (act === 'cancel') { openEdit = null; return paint(); }
+    if (act === 'del') { S.items = S.items.filter(function (x) { return x.id !== id; }); openEdit = null; R.toast('Removed from your trip'); return save(); }
+    if (act === 'up' || act === 'down') {
+      var it = S.items.find(function (x) { return x.id === id; });
+      var day = sorted().filter(function (x) { return dayOf(x) === dayOf(it); });
+      var i = day.indexOf(it), j = act === 'up' ? i - 1 : i + 1;
+      if (j < 0 || j >= day.length) return;
+      var o = day[j], so = it.sort_order, pa = it.planned_at;
+      it.sort_order = o.sort_order; o.sort_order = so; it.planned_at = o.planned_at; o.planned_at = pa;
+      save();
+    }
+  });
+  document.getElementById('days').addEventListener('submit', function (e) {
+    var f = e.target.closest('[data-edit]'); if (!f) return; e.preventDefault();
+    var it = S.items.find(function (x) { return x.id === f.dataset.edit; });
+    var v = f.querySelector('input').value; if (v) it.planned_at = v.slice(0, 16);
+    it.notes = f.querySelector('textarea').value.trim();
+    openEdit = null; R.toast('Saved'); save();
+  });
+
+  function token() { var c = 'abcdefghjkmnpqrstuvwxyz23456789', s = ''; for (var i = 0; i < 10; i++) s += c[Math.floor(Math.random() * c.length)]; return s; }
+  function paintShare() {
+    var on = S.trip.is_shared && S.share.is_active, link = 'tidewander.example/s/' + (S.share.share_token || '...');
+    document.getElementById('share').innerHTML =
+      '<div class="row between"><h3>Share this trip</h3><span class="pill ' + (on ? 'ok' : '') + '">' + (on ? 'Link active' : 'Private') + '</span></div>' +
+      '<p class="muted small">Friends and family can view the plan without signing in. They cannot edit it.</p>' +
+      (on ? '<div class="token"><code id="tok">' + R.esc(link) + '</code><button class="btn sm" id="copy" type="button">Copy</button></div>' +
+        '<p class="hint">trip_shares.share_token · is_active = true. The shared page is a later feature, so this link is a placeholder.</p>' : '') +
+      '<button class="btn ' + (on ? 'ghost' : '') + ' block" id="tog" type="button">' + R.icon('share') + (on ? 'Stop sharing' : 'Create share link') + '</button>';
+  }
+  document.getElementById('share').addEventListener('click', function (e) {
+    if (e.target.closest('#tog')) {
+      var on = S.trip.is_shared && S.share.is_active;
+      if (on) { S.share.is_active = false; S.trip.is_shared = false; R.toast('Sharing turned off'); }
+      else { if (!S.share.share_token) S.share.share_token = token(); S.share.is_active = true; S.trip.is_shared = true; R.toast('Share link created'); }
+      save();
+    }
+    if (e.target.closest('#copy')) {
+      var text = document.getElementById('tok').textContent;
+      var done = function () { R.toast('Link copied'); };
+      var fallback = function () { var r = document.createRange(); r.selectNodeContents(document.getElementById('tok')); var s = getSelection(); s.removeAllRanges(); s.addRange(r); R.toast('Press copy on your keyboard'); };
+      try { navigator.clipboard.writeText(text).then(done, fallback); } catch (err) { fallback(); }
+    }
+  });
+  document.getElementById('reset').addEventListener('click', function () { R.resetAll(); S = R.getState(); openEdit = null; dayF = null; active = null; R.toast('Demo data restored'); paint(); });
+  paint();
+})();
+</script>
+</body>
+</html>

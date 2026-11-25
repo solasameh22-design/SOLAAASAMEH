@@ -28,3 +28,6 @@ Never commit `.env`. On Vercel, set `DATABASE_URL` and `JWT_SECRET` in the proje
 Status: the SQL and the zod validation rules were tested; the Express code has not been run yet.
 
 `frontend-example/` holds the Vite proxy config and the Trip Itinerary page to copy into your React project; it is not part of this API build.
+
+## Front end
+`public/` is the Tidewander front end (static pages: Explore, Destination, Create Trip, Trip Itinerary, Place Details, Login / Sign Up), served at the site root by Vercel. Login and Sign Up use the real `/api/auth` routes. The other pages still show demo data stored in the browser; connecting them to `/api/destinations`, `/api/places` and `/api/trips` is the next step.

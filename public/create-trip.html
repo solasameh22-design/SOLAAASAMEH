@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Create Trip · Tidewander</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+<div id="chrome"></div>
+<script src="app.js"></script>
+<main class="shell">
+  <div class="stack" style="max-width:720px">
+    <span class="eyebrow">New trip</span>
+    <h1>Plan your trip</h1>
+    <p class="muted">Describe it in your own words and the form below fills in. Change any field and the plan preview updates.</p>
+  </div>
+  <div class="plan">
+    <div class="stack">
+      <form class="prompt" id="pf" autocomplete="off" style="background:var(--surface);box-shadow:none;border:1.5px solid var(--line)">
+        <label for="ask" style="position:absolute;left:-9999px">Describe your trip</label>
+        <input id="ask" type="text" placeholder="3 days in Cairo for food and history, under $900" style="color:var(--fg)">
+        <button class="go" type="submit" style="background:var(--accent);color:var(--on-accent)">Fill the form</button>
+      </form>
+      <div class="stack" id="chat" aria-live="polite"></div>
+      <form id="f" novalidate>
+        <div class="field"><label for="title">Trip title</label><span class="col">trips.title · text</span>
+          <input id="title" name="title" type="text" required maxlength="80"><span class="err" id="e-title"></span></div>
+        <div class="field"><label for="location_id">Destination</label><span class="col">trips.location_id · uuid, links to location</span>
+          <select id="location_id" name="location_id" required></select></div>
+        <div class="split">
+          <div class="field"><label for="start_date">Start date</label><span class="col">trips.start_date · date</span><input id="start_date" name="start_date" type="date" required></div>
+          <div class="field"><label for="end_date">End date</label><span class="col">trips.end_date · date</span><input id="end_date" name="end_date" type="date" required><span class="err" id="e-end"></span></div>
+        </div>
+        <div class="field"><label for="budget">Budget (USD)</label><span class="col">trips.budget · numeric</span>
+          <input id="budget" name="budget" type="number" inputmode="decimal" min="0" step="10" placeholder="900"><span class="err" id="e-budget"></span></div>
+        <div class="field"><span class="lbl" id="int-l">Interests</span><span class="col">trips.interests · text, comma separated</span>
+          <div class="tabs" id="chips" role="group" aria-labelledby="int-l" style="flex-wrap:wrap;overflow:visible"></div>
+          <input id="interests" name="interests" type="text" placeholder="History, Food, Hidden gems"><span class="hint">Tap a chip or type your own.</span></div>
+        <label class="switch" for="is_shared"><input id="is_shared" name="is_shared" type="checkbox"><span><b>Allow a share link</b><br><span class="hint">trips.is_shared · boolean. You can change it later.</span></span></label>
+        <p class="hint">id, user_id and created_at are filled in automatically when the trip is saved.</p>
+        <button class="btn block" type="submit">Create my itinerary</button>
+      </form>
+    </div>
+    <aside class="mapcol" style="order:0"><div class="panel pv" id="pv" aria-live="polite"></div></aside>
+  </div>
+</main>
+<script>
+(function () {
+  var R = window.RW, f = document.getElementById('f'), sel = document.getElementById('location_id'), title = document.getElementById('title'), touched = false;
+  sel.innerHTML = R.LOCATIONS.map(function (l) { return '<option value="' + l.id + '">' + R.esc(l.name) + ', ' + R.esc(l.country) + '</option>'; }).join('');
+  var h = decodeURIComponent((location.hash || '').slice(1));
+  sel.value = R.loc(h) ? h : R.currentLocation().id;
+  function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  var s0 = addDays(new Date(), 14);
+  f.start_date.value = R.iso(s0); f.end_date.value = R.iso(addDays(s0, 2)); f.budget.value = '900'; f.interests.value = 'History, Food, Hidden gems';
+  function suggest() { var d = Math.max(R.nightsDays(f.start_date.value || R.iso(s0), f.end_date.value || R.iso(s0)), 1); return R.loc(sel.value).name + ' in ' + d + (d === 1 ? ' day' : ' days'); }
+  title.value = suggest();
+  title.addEventListener('input', function () { touched = true; });
+
+  var chips = document.getElementById('chips');
+  function paintChips() {
+    var cur = f.interests.value.split(',').map(function (s) { return s.trim().toLowerCase(); });
+    chips.innerHTML = R.INTERESTS.map(function (i) { return '<button type="button" class="tab" data-i="' + i + '" aria-pressed="' + (cur.indexOf(i.toLowerCase()) > -1) + '">' + i + '</button>'; }).join('');
+  }
+  chips.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-i]'); if (!b) return;
+    var cur = f.interests.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    var i = cur.findIndex(function (s) { return s.toLowerCase() === b.dataset.i.toLowerCase(); });
+    if (i > -1) cur.splice(i, 1); else cur.push(b.dataset.i);
+    f.interests.value = cur.join(', '); paintChips(); preview();
+  });
+
+  function current() { return { title: title.value.trim() || suggest(), location_id: sel.value, start_date: f.start_date.value, end_date: f.end_date.value, budget: f.budget.value, interests: f.interests.value.trim(), is_shared: f.is_shared.checked }; }
+  function preview() {
+    var c = current(), box = document.getElementById('pv');
+    if (!c.start_date || !c.end_date || c.end_date < c.start_date) { box.innerHTML = '<h3>Plan preview</h3><div class="empty">Pick a start and end date to see your plan.</div>'; return; }
+    var S = R.generateTrip(c), days = {}, keys = [];
+    S.items.slice().sort(function (a, b) { return a.sort_order - b.sort_order; }).forEach(function (it) { var k = it.planned_at.slice(0, 10); if (!days[k]) { days[k] = []; keys.push(k); } days[k].push(it); });
+    keys.sort();
+    var legend = keys.map(function (k, i) { return '<span><i class="dot" style="background:' + R.dayColor(i) + '"></i>Day ' + (i + 1) + '</span>'; }).join('');
+    var rows = keys.map(function (k, i) {
+      return '<div class="dayrow"><b>Day ' + (i + 1) + ' · ' + R.fmtDay(k) + '</b>' + days[k].map(function (it) { return '<span class="small muted">' + R.fmtTime(it.planned_at) + '  ' + R.esc(R.place(it.place_id).name) + '</span>'; }).join('') + '</div>';
+    }).join('');
+    var per = c.budget === '' ? '' : ' · about ' + R.money(Number(c.budget) / R.nightsDays(c.start_date, c.end_date)) + ' a day';
+    box.innerHTML = '<div class="row between"><h3>Plan preview</h3><span class="pill">' + S.items.length + ' stops</span></div>' +
+      '<div class="mapbox">' + R.tripMap(S) + '<span class="mapnote">Schematic map</span></div><div class="legend">' + legend + '</div>' +
+      '<p class="muted small">' + R.esc(R.loc(c.location_id).name) + per + '</p>' + rows;
+  }
+  [sel, f.start_date, f.end_date].forEach(function (el) { el.addEventListener('change', function () { if (!touched) title.value = suggest(); preview(); }); });
+  [f.budget, f.interests, title, f.is_shared].forEach(function (el) { el.addEventListener('input', function () { if (el === f.interests) paintChips(); preview(); }); });
+
+  /* Mindtrip-style prompt: parse words into the ERD fields */
+  var chat = document.getElementById('chat');
+  function applyPrompt(text) {
+    var p = R.parsePrompt(text), got = [];
+    if (p.location_id) { sel.value = p.location_id; got.push(R.loc(p.location_id).name); }
+    if (p.days) { f.end_date.value = R.iso(addDays(R.parseDate(f.start_date.value), p.days - 1)); got.push(p.days + (p.days === 1 ? ' day' : ' days')); }
+    if (p.budget != null) { f.budget.value = p.budget; got.push(R.money(p.budget)); }
+    if (p.interests) { f.interests.value = p.interests; got.push(p.interests); }
+    if (!touched) title.value = suggest();
+    paintChips(); preview();
+    chat.innerHTML = '<div class="bubble you">' + R.esc(text) + '</div><div class="bubble"><b>' + (got.length ? 'Here is what I picked up' : 'I could not find details in that') + '</b><span>' +
+      (got.length ? R.esc(got.join(' · ')) + '. Check the form and change anything.' : 'Try naming Cairo, Paris or Sharm El-Sheikh, a number of days, and what you like.') + '</span></div>';
+  }
+  document.getElementById('pf').addEventListener('submit', function (e) { e.preventDefault(); var v = document.getElementById('ask').value.trim(); if (v) applyPrompt(v); });
+  var draft = R.load('rw_draft', null);
+  if (draft && draft.text) { document.getElementById('ask').value = draft.text; R.save('rw_draft', null); applyPrompt(draft.text); }
+  paintChips(); preview();
+
+  f.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var ok = true;
+    function err(id, msg) { document.getElementById(id).textContent = msg; if (msg) ok = false; }
+    err('e-title', title.value.trim() ? '' : 'Give your trip a title.');
+    err('e-end', f.start_date.value && f.end_date.value && f.end_date.value >= f.start_date.value ? '' : 'End date must be on or after the start date.');
+    err('e-budget', f.budget.value === '' || Number(f.budget.value) >= 0 ? '' : 'Budget cannot be negative.');
+    if (!ok) return;
+    R.setState(R.generateTrip(current()));
+    location.href = 'itinerary.html';
+  });
+})();
+</script>
+</body>
+</html>

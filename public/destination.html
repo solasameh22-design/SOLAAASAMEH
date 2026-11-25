@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Destination Details · Tidewander</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+<div id="chrome"></div>
+<script src="app.js"></script>
+<main class="shell">
+  <div class="crumbs"><a href="index.html">Explore</a><span>/</span><span id="crumb"></span></div>
+  <section class="dhero" id="hero"></section>
+  <div class="tabs" id="switch" aria-label="Switch destination"></div>
+  <section class="stack">
+    <div class="row between">
+      <div class="tabs" id="filters" role="group" aria-label="Filter places"></div>
+      <div class="seg" id="view" role="tablist" aria-label="View" style="min-width:180px"><button type="button" role="tab" data-v="list" aria-selected="true">List</button><button type="button" role="tab" data-v="map" aria-selected="false">Map</button></div>
+    </div>
+    <div id="body"></div>
+  </section>
+</main>
+<script>
+(function () {
+  var R = window.RW, L = R.currentLocation(), S = R.getState(), view = 'list', sel = null;
+  var defs = [['all', 'All'], ['attraction', 'Things to do'], ['restaurant', 'Eats'], ['hotel', 'Stays'], ['entertainment', 'Shows'], ['gem', 'Hidden gems']];
+  var filter = R.load('rw_filter', 'all'); if (!defs.some(function (d) { return d[0] === filter; })) filter = 'all';
+  document.title = L.name + ' · Tidewander';
+  document.getElementById('crumb').textContent = L.name;
+  var all = R.placesIn(L.id), gems = all.filter(function (p) { return p.is_hidden_gem; }).length;
+  document.getElementById('hero').innerHTML =
+    '<div class="tile ' + R.locClass(L.id) + '">' + R.icon('pin') + '<span class="country">' + R.esc(L.country) + '</span><h1>' + R.esc(L.name) + '</h1></div>' +
+    '<div class="meta"><p>' + R.esc(L.description) + '</p><div class="row"><span class="pill">' + all.length + ' places</span><span class="pill gem">' + R.icon('gem') + gems + ' hidden gems</span>' +
+    '<span style="flex:1"></span><a class="btn" href="create-trip.html#' + L.id + '">' + R.icon('plus') + 'Plan a trip to ' + R.esc(L.name) + '</a></div></div>';
+  document.getElementById('switch').innerHTML = R.LOCATIONS.map(function (l) {
+    return '<a class="tab" href="destination.html#' + l.id + '"' + (l.id === L.id ? ' aria-current="true"' : '') + '>' + R.esc(l.name) + '</a>';
+  }).join('');
+  window.addEventListener('hashchange', function () { location.reload(); });
+
+  function shown() { return all.filter(function (p) { return filter === 'all' || (filter === 'gem' ? p.is_hidden_gem : p.category === filter); }); }
+  function paint() {
+    document.getElementById('filters').innerHTML = defs.map(function (d) { return '<button type="button" class="tab" data-f="' + d[0] + '" aria-pressed="' + (filter === d[0]) + '">' + d[1] + '</button>'; }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('#view button'), function (b) { b.setAttribute('aria-selected', b.dataset.v === view); });
+    var list = shown(), body = document.getElementById('body');
+    if (!list.length) { body.innerHTML = '<div class="empty">Nothing here yet.</div>'; return; }
+    if (view === 'list') {
+      body.innerHTML = (S.trip.location_id === L.id ? '<p class="hint" style="margin-bottom:12px">"Fits" tags match the interests on your trip: ' + R.esc(S.trip.interests) + '.</p>' : '') + '<div class="grid cols">' + list.map(function (p) { return R.placeCard(p, S.trip.location_id === L.id ? S.trip.interests : ''); }).join('') + '</div>';
+    } else {
+      if (!sel || !list.some(function (p) { return p.id === sel; })) sel = list[0].id;
+      var pins = list.map(function (p, i) { var pos = R.POS[p.id]; return { id: p.id, x: pos[0], y: pos[1], n: i + 1, color: p.is_hidden_gem ? 'var(--day2)' : 'var(--day1)', label: p.name, aria: p.name, active: p.id === sel }; });
+      body.innerHTML = '<div class="plan"><div class="mapcol"><div class="mapbox" id="mb">' + R.mapSVG(L.id, pins, [], 'Map of ' + L.name) + '<span class="mapnote">Schematic map</span></div>' +
+        '<div class="legend"><span><i class="dot" style="background:var(--day1)"></i>Place</span><span><i class="dot" style="background:var(--day2)"></i>Hidden gem</span></div></div>' +
+        '<div class="stack" id="selcard">' + R.placeCard(R.place(sel), S.trip.location_id === L.id ? S.trip.interests : '') + '</div></div>';
+    }
+  }
+  document.getElementById('filters').addEventListener('click', function (e) { var b = e.target.closest('[data-f]'); if (!b) return; filter = b.dataset.f; R.save('rw_filter', filter); paint(); });
+  document.getElementById('view').addEventListener('click', function (e) { var b = e.target.closest('[data-v]'); if (!b) return; view = b.dataset.v; paint(); });
+  document.getElementById('body').addEventListener('click', function (e) {
+    var pin = e.target.closest('.pin'); if (pin) { sel = pin.dataset.id; paint(); return; }
+    var a = e.target.closest('[data-add]'); if (!a) return;
+    var r = R.addToTrip(a.dataset.add);
+    if (!r.ok) R.toast(R.esc(r.msg)); else R.toast('Added to Day ' + r.day + ' <a href="itinerary.html">View</a>');
+  });
+  document.getElementById('body').addEventListener('keydown', function (e) { var pin = e.target.closest('.pin'); if (pin && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); sel = pin.dataset.id; paint(); } });
+  paint();
+})();
+</script>
+</body>
+</html>

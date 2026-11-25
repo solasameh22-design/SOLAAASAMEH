@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Place Details · Tidewander</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+<div id="chrome"></div>
+<script src="app.js"></script>
+<main class="shell">
+  <div class="crumbs" id="crumbs"></div>
+  <div class="plan">
+    <article class="stack" id="main"></article>
+    <aside class="mapcol" style="order:0">
+      <div class="mapbox" id="mb"></div>
+      <form class="panel" id="add" novalidate>
+        <h3>Add to your trip</h3>
+        <p class="muted small" id="addFor"></p>
+        <div class="field"><span class="lbl" id="dl">Day</span><div class="tabs" id="daychips" role="group" aria-labelledby="dl"></div></div>
+        <div class="field"><label for="planned_at">Planned at</label><span class="col">trip_items.planned_at · timestamptz</span><input id="planned_at" type="datetime-local" required></div>
+        <div class="field"><label for="notes">Notes</label><span class="col">trip_items.notes · text</span><textarea id="notes" placeholder="Ticket time, who is coming, what to bring"></textarea></div>
+        <p class="hint">trip_id, place_id and sort_order are set for you.</p>
+        <button class="btn block" type="submit">Add to itinerary</button>
+      </form>
+    </aside>
+  </div>
+  <section class="stack" aria-labelledby="mh"><h2 id="mh"></h2><div class="grid cols" id="more"></div></section>
+</main>
+<script>
+(function () {
+  var R = window.RW, P = R.currentPlace(), L = R.loc(P.location_id), G = R.user(P.guide_id), S = R.getState(), t = S.trip, tl = R.loc(t.location_id);
+  document.title = P.name + ' · Tidewander';
+  window.addEventListener('hashchange', function () { location.reload(); });
+  document.getElementById('crumbs').innerHTML = '<a href="index.html">Explore</a><span>/</span><a href="destination.html#' + L.id + '">' + R.esc(L.name) + '</a><span>/</span><span>' + R.esc(P.name) + '</span>';
+  var m = t.location_id === L.id ? R.matches(P, t.interests) : [];
+  document.getElementById('main').innerHTML =
+    R.tile(P, '').replace('class="tile', 'style="height:180px;border-radius:24px" class="tile') +
+    '<div class="tags"><span class="pill">' + R.esc(R.CATS[P.category].label) + '</span>' + (P.is_hidden_gem ? '<span class="pill gem">' + R.icon('gem') + 'Hidden gem</span>' : '') + (m.length ? '<span class="pill ok">' + R.icon('check') + 'Fits your trip: ' + R.esc(m.join(', ')) + '</span>' : '') + '</div>' +
+    '<h1>' + R.esc(P.name) + '</h1><p>' + R.esc(P.description) + '</p>' +
+    '<dl class="facts"><div class="fact"><dt>Address</dt><dd>' + R.esc(P.address) + '</dd></div>' +
+    '<div class="fact"><dt>Destination</dt><dd><a href="destination.html#' + L.id + '">' + R.esc(L.name) + ', ' + R.esc(L.country) + '</a></dd></div>' +
+    '<div class="fact"><dt>Recommended by</dt><dd>' + R.esc(G.full_name) + ' <span class="pill">' + R.esc(G.role) + '</span></dd></div></dl>' +
+    '<a class="btn block" href="' + R.esc(P.booking_url) + '" target="_blank" rel="noopener">' + R.icon('ext') + 'Open booking page</a>' +
+    '<p class="hint">Booking opens a partner site. Tidewander does not take payments.</p>' +
+    (P.is_hidden_gem ? '<div class="tip"><span class="eyebrow">Local tip</span><span>' + R.esc(G.full_name.split(' ')[0]) + ' adds hidden gems herself or himself and suggests visiting outside peak hours.</span></div>' : '');
+
+  var pins = R.placesIn(L.id).map(function (p) { var pos = R.POS[p.id]; return { id: p.id, x: pos[0], y: pos[1], color: p.id === P.id ? 'var(--day1)' : 'var(--accent-soft)', small: p.id !== P.id, active: p.id === P.id, label: p.name, aria: p.name }; });
+  document.getElementById('mb').innerHTML = R.mapSVG(L.id, pins, [], 'Map of ' + L.name) + '<span class="mapnote">Schematic map</span>';
+  document.getElementById('mb').addEventListener('click', function (e) { var pin = e.target.closest('.pin'); if (pin && pin.dataset.id !== P.id) location.hash = pin.dataset.id; });
+
+  document.getElementById('addFor').innerHTML = 'Trip: <b>' + R.esc(t.title) + '</b> (' + R.fmtRange(t.start_date, t.end_date) + ')' + (tl.id !== L.id ? '<br><span class="err">This trip is in ' + R.esc(tl.name) + '. Create a new trip to add this place.</span>' : '');
+  var pa = document.getElementById('planned_at'), d0 = R.parseDate(t.start_date), n = Math.min(R.nightsDays(t.start_date, t.end_date), 14), ks = [];
+  for (var i = 0; i < n; i++) { var x = new Date(d0); x.setDate(d0.getDate() + i); ks.push(R.iso(x)); }
+  pa.value = ks[0] + 'T10:00'; pa.min = ks[0] + 'T00:00'; pa.max = ks[ks.length - 1] + 'T23:59';
+  function chips() { document.getElementById('daychips').innerHTML = ks.map(function (k, i) { return '<button type="button" class="tab" data-k="' + k + '" aria-pressed="' + (pa.value.slice(0, 10) === k) + '">Day ' + (i + 1) + '</button>'; }).join(''); }
+  document.getElementById('daychips').addEventListener('click', function (e) { var b = e.target.closest('[data-k]'); if (!b) return; pa.value = b.dataset.k + 'T' + (pa.value.slice(11, 16) || '10:00'); chips(); });
+  pa.addEventListener('change', chips); chips();
+  document.getElementById('add').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!pa.value) { R.toast('Choose a date and time'); return; }
+    var r = R.addToTrip(P.id, pa.value, document.getElementById('notes').value.trim());
+    if (!r.ok) { R.toast(R.esc(r.msg)); return; }
+    document.getElementById('notes').value = '';
+    R.toast('Added to ' + R.esc(r.title) + ' <a href="itinerary.html">View</a>');
+  });
+  document.getElementById('mh').textContent = 'More in ' + L.name;
+  document.getElementById('more').innerHTML = R.placesIn(L.id).filter(function (p) { return p.id !== P.id; }).slice(0, 3).map(function (p) { return R.placeCard(p, t.location_id === L.id ? t.interests : ''); }).join('');
+  document.getElementById('more').addEventListener('click', function (e) { var a = e.target.closest('[data-add]'); if (!a) return; var r = R.addToTrip(a.dataset.add); R.toast(r.ok ? 'Added to Day ' + r.day + ' <a href="itinerary.html">View</a>' : R.esc(r.msg)); });
+})();
+</script>
+</body>
+</html>

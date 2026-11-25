@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Login or Sign Up · Tidewander</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+<div id="chrome"></div>
+<script src="app.js"></script>
+<main class="shell" style="max-width:520px">
+  <div class="stack">
+    <span class="eyebrow">Your account</span>
+    <h1 id="h">Save your trips</h1>
+    <p class="muted">Log in or create an account. Your password is stored only as a secure hash.</p>
+  </div>
+  <section id="out" class="stack">
+    <div class="seg" role="tablist" aria-label="Account"><button type="button" role="tab" id="t-in" aria-selected="true">Log in</button><button type="button" role="tab" id="t-up" aria-selected="false">Sign up</button></div>
+    <form id="fin" novalidate>
+      <div class="field"><label for="in-email">Email</label><span class="col">users.email · text</span><input id="in-email" type="email" autocomplete="email" placeholder="nour.adel@example.com"><span class="err" id="e-in-email"></span></div>
+      <div class="field"><label for="in-pw">Password</label><span class="col">stored only as a bcrypt hash</span><input id="in-pw" type="password" autocomplete="current-password" placeholder="Your password"><span class="err" id="e-in-pw"></span></div>
+      <button class="btn block" type="submit">Log in</button>
+    </form>
+    <form id="fup" hidden novalidate>
+      <div class="field"><label for="full_name">Full name</label><span class="col">users.full_name · text</span><input id="full_name" type="text" autocomplete="name" placeholder="Nour Adel"><span class="err" id="e-name"></span></div>
+      <div class="field"><label for="email">Email</label><span class="col">users.email · text</span><input id="email" type="email" autocomplete="email" placeholder="you@example.com"><span class="err" id="e-email"></span></div>
+      <div class="field"><label for="role">I am a</label><span class="col">users.role · text</span><select id="role"></select></div>
+      <div class="field"><label for="pw">Password</label><span class="col">stored only as a bcrypt hash</span><input id="pw" type="password" autocomplete="new-password" placeholder="At least 8 characters"><span class="err" id="e-pw"></span></div>
+      <p class="hint">id and created_at are created automatically.</p>
+      <button class="btn block" type="submit">Create account</button>
+    </form>
+  </section>
+  <section id="inn" class="stack" hidden>
+    <dl class="facts" id="me"></dl>
+    <a class="btn block" href="itinerary.html">Open my itinerary</a>
+    <button class="btn ghost block" id="signout" type="button">Sign out</button>
+  </section>
+</main>
+<script>
+(function () {
+  var R = window.RW;
+  var tin = document.getElementById('t-in'), tup = document.getElementById('t-up'), fin = document.getElementById('fin'), fup = document.getElementById('fup');
+  document.getElementById('role').innerHTML = R.ROLES.map(function (r) { return '<option value="' + r.replace(' ', '_') + '">' + r.charAt(0).toUpperCase() + r.slice(1) + '</option>'; }).join('');
+  function tab(up) { tin.setAttribute('aria-selected', !up); tup.setAttribute('aria-selected', up); fin.hidden = up; fup.hidden = !up; }
+  tin.onclick = function () { tab(false); }; tup.onclick = function () { tab(true); };
+  if (location.hash === '#signup') tab(true);
+  var valid = function (v) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v); };
+  function show() {
+    var u = R.getUser();
+    document.getElementById('out').hidden = !!u; document.getElementById('inn').hidden = !u;
+    document.getElementById('h').textContent = u ? 'Hi, ' + u.full_name.split(' ')[0] : 'Save your trips';
+    if (u) document.getElementById('me').innerHTML =
+      '<div class="fact"><dt>Name</dt><dd>' + R.esc(u.full_name) + '</dd></div><div class="fact"><dt>Email</dt><dd>' + R.esc(u.email) + '</dd></div><div class="fact"><dt>Role</dt><dd>' + R.esc(u.role) + '</dd></div>';
+    R.renderChrome();
+  }
+  function finish(u, msg) { R.setUser(u); show(); R.toast(msg); }
+  function call(path, body) {
+    return fetch('/api/auth/' + path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, data: d }; }); })
+      .catch(function () { return { ok: false, data: { error: 'Cannot reach the server. Check your connection and try again.' } }; });
+  }
+  fin.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var em = document.getElementById('in-email').value.trim(), pw = document.getElementById('in-pw').value, ok = true;
+    document.getElementById('e-in-email').textContent = valid(em) ? '' : 'Enter a valid email address.';
+    if (!valid(em)) ok = false;
+    document.getElementById('e-in-pw').textContent = pw ? '' : 'Enter your password.';
+    if (!pw) ok = false;
+    if (!ok) return;
+    call('login', { email: em, password: pw }).then(function (r) {
+      if (r.ok) finish(r.data.user, 'Logged in');
+      else document.getElementById('e-in-pw').textContent = r.data.error || 'Could not log in.';
+    });
+  });
+  fup.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var n = document.getElementById('full_name').value.trim(), em = document.getElementById('email').value.trim(), pw = document.getElementById('pw').value, ok = true;
+    function err(id, m) { document.getElementById(id).textContent = m; if (m) ok = false; }
+    err('e-name', n.length >= 2 ? '' : 'Enter your name.'); err('e-email', valid(em) ? '' : 'Enter a valid email address.'); err('e-pw', pw.length >= 8 ? '' : 'Use at least 8 characters.');
+    if (!ok) return;
+    call('register', { full_name: n, email: em, password: pw, role: document.getElementById('role').value }).then(function (r) {
+      if (r.ok) return finish(r.data.user, 'Account created');
+      var f = r.data.fields || {};
+      err('e-name', f.full_name || ''); err('e-email', f.email || ''); err('e-pw', f.password || (f.full_name || f.email ? '' : (r.data.error || 'Could not create the account.')));
+    });
+  });
+  document.getElementById('signout').addEventListener('click', function () { fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(function () {}); R.setUser(null); try { localStorage.removeItem('rw_user_v1'); } catch (e) {} show(); R.toast('Signed out'); });
+  show();
+})();
+</script>
+</body>
+</html>

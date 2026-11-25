@@ -1,4 +1,107 @@
 <!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
-<title>Travel guide API</title>
-<p>Travel guide API is running. Try <a href="/api/health">/api/health</a>.</p>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tidewander</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="chrome"></div>
+<script src="app.js"></script>
+<main class="shell">
+  <section class="hero2" aria-labelledby="h">
+    <span class="eyebrow-w">Tidewander travel guide</span>
+    <h1 id="h">Tell us the trip. We plan the days.</h1>
+    <p>Say where, how long and what you like. Tidewander picks places, restaurants and hidden gems, then lays them out on a day-by-day map you can edit.</p>
+    <form class="prompt" id="pf" autocomplete="off">
+      <label for="ask" style="position:absolute;left:-9999px">Describe your trip</label>
+      <input id="ask" name="ask" type="text" placeholder="3 days in Cairo for food and history, under $900">
+      <button class="go" type="submit"><span id="goIco"></span>Plan my trip</button>
+    </form>
+    <div class="chips-w" id="ex" aria-label="Example trips"></div>
+  </section>
+
+  <nav class="cats" id="cats" aria-label="Explore by type"></nav>
+
+  <section class="stack" aria-labelledby="dh">
+    <div class="row between"><h2 id="dh">Destinations</h2><span class="muted small" id="dcount"></span></div>
+    <form class="search" id="cf" role="search" autocomplete="off"><span id="cIco"></span><label for="cq" style="position:absolute;left:-9999px">Search cities</label><input id="cq" type="search" placeholder="Search cities"></form>
+    <div class="grid cols" id="dests"></div>
+  </section>
+
+  <section class="stack" aria-labelledby="ih">
+    <div class="row between"><h2 id="ih">Trip ideas from local guides</h2><span class="muted small">Start from a plan</span></div>
+    <div class="grid cols" id="ideas"></div>
+  </section>
+
+  <section class="stack" aria-labelledby="mh">
+    <h2 id="mh">Your trip</h2>
+    <div class="minitrip" id="mini"></div>
+  </section>
+
+  <section class="stack" aria-labelledby="gh">
+    <div class="row between"><h2 id="gh">Hidden gems</h2><span class="muted small">Tips from local guides</span></div>
+    <div class="hscroll" id="gems"></div>
+  </section>
+</main>
+<script>
+(function () {
+  var R = window.RW;
+  document.getElementById('goIco').innerHTML = R.icon('sparkle');
+  function go(text) { R.save('rw_draft', { text: text }); location.href = 'create-trip.html'; }
+  document.getElementById('pf').addEventListener('submit', function (e) { e.preventDefault(); go(document.getElementById('ask').value.trim() || R.PROMPTS[0]); });
+  document.getElementById('ex').innerHTML = R.PROMPTS.map(function (p) { return '<button type="button" class="chip-w" data-p="' + R.esc(p) + '">' + R.esc(p) + '</button>'; }).join('');
+  document.getElementById('ex').addEventListener('click', function (e) { var b = e.target.closest('[data-p]'); if (b) { document.getElementById('ask').value = b.dataset.p; } });
+
+  var cats = [['attraction', 'Things to do', 'landmark'], ['restaurant', 'Eats', 'utensils'], ['hotel', 'Stays', 'bed'], ['entertainment', 'Shows', 'star'], ['gem', 'Hidden gems', 'gem']];
+  document.getElementById('cats').innerHTML = cats.map(function (c) { return '<button type="button" class="cat" data-c="' + c[0] + '">' + R.icon(c[2]) + c[1] + '</button>'; }).join('');
+  document.getElementById('cats').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-c]'); if (!b) return; R.save('rw_filter', b.dataset.c); location.href = 'destination.html#' + R.currentLocation().id;
+  });
+
+  document.getElementById('cIco').innerHTML = R.icon('search');
+  var cq = document.getElementById('cq'); cq.placeholder = 'Search ' + R.LOCATIONS.length + ' cities';
+  function paintDests() {
+    var q = cq.value.trim().toLowerCase();
+    var list = R.LOCATIONS.filter(function (l) { return !q || (l.name + ' ' + l.country).toLowerCase().indexOf(q) > -1; });
+    document.getElementById('dcount').textContent = list.length + ' of ' + R.LOCATIONS.length + ' cities';
+    document.getElementById('dests').innerHTML = list.length ? list.map(function (l) {
+      var ps = R.placesIn(l.id), g = ps.filter(function (p) { return p.is_hidden_gem; }).length;
+      return '<a class="dest" href="destination.html#' + l.id + '"><div class="tile ' + R.locClass(l.id) + '" style="height:120px">' + R.icon('pin') + '</div>' +
+        '<div class="body"><div class="row between"><h3>' + R.esc(l.name) + '</h3><span class="muted small">' + R.esc(l.country) + '</span></div>' +
+        '<p>' + R.esc(l.description) + '</p><div class="row"><span class="pill">' + ps.length + ' places</span><span class="pill gem">' + R.icon('gem') + g + ' hidden gems</span></div></div></a>';
+    }).join('') : '<div class="empty">No city matches "' + R.esc(q) + '".</div>';
+  }
+  cq.addEventListener('input', paintDests);
+  document.getElementById('cf').addEventListener('submit', function (e) { e.preventDefault(); var hit = R.LOCATIONS.filter(function (l) { return l.name.toLowerCase().indexOf(cq.value.trim().toLowerCase()) > -1; }); if (cq.value.trim() && hit.length === 1) location.href = 'destination.html#' + hit[0].id; });
+  paintDests();
+
+  document.getElementById('ideas').innerHTML = R.IDEAS.map(function (i, n) {
+    var g = R.user(i.guide), l = R.loc(i.loc);
+    return '<article class="idea"><div class="tile ' + R.locClass(i.loc) + '">' + R.icon('map') + '</div><div class="tags"><span class="pill">' + R.esc(l.name) + '</span><span class="pill">' + i.days + ' days</span></div>' +
+      '<h3>' + R.esc(i.title) + '</h3><p class="muted small">By ' + R.esc(g.full_name) + ' · ' + R.esc(i.tags) + '</p>' +
+      '<button class="btn sm ghost" type="button" data-i="' + n + '">Use this plan</button></article>';
+  }).join('');
+  document.getElementById('ideas').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (b) go(R.IDEAS[+b.dataset.i].text); });
+
+  var S = R.getState(), t = S.trip, items = S.items.slice().sort(function (a, b) { return a.sort_order - b.sort_order; });
+  var first = items.slice(0, 5).map(function (it, i) {
+    var p = R.place(it.place_id); return '<li><span class="marker" style="background:' + R.dayColor(0) + ';width:26px;height:26px;font-size:.75rem">' + (i + 1) + '</span><span class="nm">' + R.esc(p.name) + '</span></li>';
+  }).join('');
+  document.getElementById('mini').innerHTML =
+    '<div class="mapbox">' + R.tripMap(S, { day: R.iso(R.parseDate(t.start_date)) }) + '</div>' +
+    '<div class="stack"><span class="eyebrow">' + R.esc(R.loc(t.location_id).name) + ' · Day 1</span><h3 style="font-size:1.3rem">' + R.esc(t.title) + '</h3>' +
+    '<p class="muted small">' + R.fmtRange(t.start_date, t.end_date) + ' · ' + items.length + ' stops</p><ul class="stoplist">' + first + '</ul>' +
+    '<a class="btn" href="itinerary.html">Open itinerary and map</a></div>';
+
+  document.getElementById('gems').innerHTML = R.PLACES.filter(function (p) { return p.is_hidden_gem; }).map(function (p) {
+    return '<a class="gem-card" href="place.html#' + p.id + '"><div class="row between"><span class="pill gem">' + R.icon('gem') + 'Hidden gem</span><span class="muted small">' + R.esc(R.loc(p.location_id).name) + '</span></div>' +
+      '<h3>' + R.esc(p.name) + '</h3><p>' + R.esc(p.description) + '</p></a>';
+  }).join('');
+})();
+</script>
+</body>
+</html>
